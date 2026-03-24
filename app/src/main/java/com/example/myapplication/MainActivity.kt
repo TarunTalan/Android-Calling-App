@@ -13,6 +13,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myapplication.model.CallState
 import com.example.myapplication.ui.screen.DialPadScreen
+import com.example.myapplication.ui.screen.OutgoingCallScreen
+import com.example.myapplication.ui.screen.IncomingCallScreen
 import com.example.myapplication.ui.theme.BackgroundDark
 import com.example.myapplication.ui.theme.CallingAppTheme
 import com.example.myapplication.viewmodel.CallViewModel
@@ -47,19 +49,13 @@ class MainActivity : ComponentActivity() {
                         }
 
                         is CallState.Calling -> {
-                            // TODO: Replace with your OutgoingCallScreen
-                            DialPadScreen(
-                                viewModel = callViewModel,
-                                context = this@MainActivity
-                            )
+                            // Outgoing call UI
+                            OutgoingCallScreen(viewModel = callViewModel)
                         }
 
                         is CallState.Ringing -> {
-                            // TODO: Replace with your IncomingCallScreen
-                            DialPadScreen(
-                                viewModel = callViewModel,
-                                context = this@MainActivity
-                            )
+                            // Incoming call UI
+                            IncomingCallScreen(viewModel = callViewModel)
                         }
 
                         is CallState.Active -> {
