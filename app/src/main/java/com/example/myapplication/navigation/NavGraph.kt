@@ -11,6 +11,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.example.myapplication.ui.screen.ActiveCallScreen
 import com.example.myapplication.model.CallState
 import com.example.myapplication.ui.screen.DialPadScreen
 import com.example.myapplication.ui.screen.IncomingCallScreen
@@ -26,7 +27,6 @@ fun AppNavGraph(
     val callState by viewModel.callState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // ── State-driven navigation ────────────────────────────────────────────
     LaunchedEffect(callState) {
         when (callState) {
             is CallState.Idle -> { /* DialPad is start destination, nothing to do */
@@ -46,6 +46,15 @@ fun AppNavGraph(
                 }
             }
 
+            is CallState.Active -> {
+                val current = navController.currentDestination?.route
+                if (current != Screen.ActiveCall.route) {
+                    navController.navigate(Screen.ActiveCall.route) {
+                        launchSingleTop = true
+                        popUpTo(Screen.DialPad.route) { saveState = false }
+                    }
+                }
+            }
 
             is CallState.Ended -> {
                 // Brief pause so user sees end-of-call state on current screen
@@ -55,8 +64,6 @@ fun AppNavGraph(
                 }
                 viewModel.resetToIdle()
             }
-
-            else -> {}
         }
     }
 
@@ -113,5 +120,16 @@ fun AppNavGraph(
             IncomingCallScreen(viewModel = viewModel)
         }
 
+        composable(
+            route = Screen.ActiveCall.route,
+            enterTransition = {
+                fadeIn(tween(400)) + scaleIn(tween(400), initialScale = 0.96f)
+            },
+            exitTransition = {
+                fadeOut(tween(300)) + scaleOut(tween(300), targetScale = 0.96f)
+            }
+        ) {
+            ActiveCallScreen(viewModel = viewModel)
+        }
     }
 }
