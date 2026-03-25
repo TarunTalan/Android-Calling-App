@@ -3,12 +3,12 @@ package com.example.myapplication.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // ── Brand / Action Colors ─────────────────────────────────────────────────
-val CallGreen = Color(0xFF00E676)
-val CallGreenDark = Color(0xFF00C853)
-val CallRed = Color(0xFFFF1744)
-val CallRedDark = Color(0xFFD50000)
-val CallBlue = Color(0xFF448AFF)
-val CallBlueDark = Color(0xFF2962FF)
+val CallGreen = Color(0xFF00C853) // Darkened for better White text contrast
+val CallGreenDark = Color(0xFF009624)
+val CallRed = Color(0xFFFF3B30) // Vibrant semantic red
+val CallRedDark = Color(0xFFD32F2F)
+val CallBlue = Color(0xFF0A84FF)
+val CallBlueDark = Color(0xFF0066CC)
 
 // ── Backgrounds ───────────────────────────────────────────────────────────
 val BackgroundDark = Color(0xFF0A0A10)

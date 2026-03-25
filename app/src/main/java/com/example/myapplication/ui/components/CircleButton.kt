@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
@@ -29,6 +30,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Call
 
 /**
  * A circular action button with:
@@ -111,3 +115,22 @@ fun CircleButton(
         }
     }
 }
+
+
+@Preview(showBackground = true)
+@Composable
+private fun CircleButtonPreview() {
+    // Simple preview on a dark background so the white icon contrasts
+    Box(modifier = Modifier.background(Color(0xFF081408)).padding(16.dp)) {
+        CircleButton(
+            onClick = {},
+            backgroundColor = Color(0xFF1EB980),
+            gradientColors = null,
+            size = 64.dp,
+            icon = Icons.Filled.Call,
+            label = "Call",
+            enabled = true
+        )
+    }
+}
+

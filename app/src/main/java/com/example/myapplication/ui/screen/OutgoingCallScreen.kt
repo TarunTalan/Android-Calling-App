@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,8 +24,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -72,14 +79,6 @@ fun OutgoingCallScreen(viewModel: CallViewModel) {
                 delay(500)
                 dotCount = if (dotCount >= 3) 1 else dotCount + 1
             }
-        }
-    }
-
-    // ── Simulate remote side answering after 7 seconds ────────────────────
-    LaunchedEffect(Unit) {
-        delay(7000)
-        if (viewModel.callState.value is CallState.Calling) {
-            viewModel.acceptCall()
         }
     }
 
@@ -176,14 +175,40 @@ fun OutgoingCallScreen(viewModel: CallViewModel) {
 
             Spacer(modifier = Modifier.height(36.dp))
 
-            // ── Number ────────────────────────────────────────────────────
-            Text(
-                text = formatPhoneDisplay(number),
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Light,
-                color = TextPrimary,
-                letterSpacing = 2.sp
-            )
+            // ── Caller Name & Number ──────────────────────────────────────
+            val callerName = (callState as? CallState.Calling)?.callerName ?: ""
+            if (callerName.isNotEmpty()) {
+                Text(
+                    text = callerName,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = TextPrimary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 32.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = formatPhoneDisplay(number),
+                    fontSize = 18.sp,
+                    color = TextSecondary,
+                    fontWeight = FontWeight.Light,
+                    letterSpacing = 1.5.sp
+                )
+            } else {
+                Text(
+                    text = formatPhoneDisplay(number),
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Light,
+                    color = TextPrimary,
+                    letterSpacing = 2.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 32.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -206,23 +231,64 @@ fun OutgoingCallScreen(viewModel: CallViewModel) {
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // ── End Call Button ───────────────────────────────────────────
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
+            // ── Control row: Mute · Speaker ────────────────────────
+            androidx.compose.material3.Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 72.dp)
+                    .padding(horizontal = 24.dp),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = com.example.myapplication.ui.theme.CardBackground)
             ) {
-                CircleButton(
-                    onClick = { viewModel.endCall() },
-                    backgroundColor = CallRed,
-                    pressedColor = CallRedDark,
-                    size = 76.dp,
-                    icon = Icons.Filled.CallEnd,
-                    label = "End Call"
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 28.dp, horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val isMuted by viewModel.isMuted.collectAsStateWithLifecycle()
+                    val muteColor by androidx.compose.animation.animateColorAsState(
+                        targetValue = if (isMuted) Color(0xFFFF6B6B) else com.example.myapplication.ui.theme.SurfaceElevated,
+                        label = "muteColor"
+                    )
+                    CircleButton(
+                        onClick = { viewModel.toggleMute() },
+                        backgroundColor = muteColor,
+                        size = 64.dp,
+                        icon = if (isMuted) androidx.compose.material.icons.Icons.Filled.MicOff else androidx.compose.material.icons.Icons.Filled.Mic,
+                        iconTint = if (isMuted) Color.White else TextSecondary,
+                        label = if (isMuted) "Unmute" else "Mute"
+                    )
+
+                    val isSpeakerOn by viewModel.isSpeakerOn.collectAsStateWithLifecycle()
+                    val speakerColor by androidx.compose.animation.animateColorAsState(
+                        targetValue = if (isSpeakerOn) Color(0xFF1A4A2A) else com.example.myapplication.ui.theme.SurfaceElevated,
+                        label = "speakerColor"
+                    )
+                    CircleButton(
+                        onClick = { viewModel.toggleSpeaker() },
+                        backgroundColor = speakerColor,
+                        size = 64.dp,
+                        icon = if (isSpeakerOn) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                        iconTint = if (isSpeakerOn) CallGreen else TextSecondary,
+                        label = if (isSpeakerOn) "Speaker" else "Speaker"
+                    )
+                }
             }
+
+            Spacer(modifier = Modifier.height(36.dp))
+
+            // ── End Call Button ───────────────────────────────────────────
+            CircleButton(
+                onClick = { viewModel.endCall() },
+                backgroundColor = CallRed,
+                pressedColor = CallRedDark,
+                size = 76.dp,
+                icon = Icons.Filled.CallEnd,
+                label = "End Call"
+            )
+            
+            Spacer(modifier = Modifier.height(60.dp))
         }
     }
 }
