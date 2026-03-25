@@ -1,27 +1,92 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+
+    <uses-feature android:name="android.hardware.telephony" android:required="false"/>
+
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+    <uses-permission android:name="android.permission.READ_CALL_LOG"/>
+    <uses-permission android:name="android.permission.CALL_PHONE"/>
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS"/>
+    <!-- MANAGE_OWN_CALLS is for self-managed calls only — removed because this
+         app uses InCallService (system-managed). Having both causes Telecom to
+         skip routing real SIM calls through our InCallService. -->
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS"/>
+    <!-- Required to query device contacts for dial-pad suggestions -->
+    <uses-permission android:name="android.permission.READ_CONTACTS"/>
 
     <application
-        android:allowBackup="true"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
-        android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:supportsRtl="true"
-        android:theme="@style/Theme.MyApplication">
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
+            android:name=".CallingApp"
+            android:allowBackup="true"
+            android:dataExtractionRules="@xml/data_extraction_rules"
+            android:fullBackupContent="@xml/backup_rules"
+            android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:supportsRtl="true"
             android:theme="@style/Theme.MyApplication">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
 
-                <category android:name="android.intent.category.LAUNCHER" />
+
+        <activity
+                android:name=".MainActivity"
+                android:exported="true"
+                android:launchMode="singleTop"
+                android:screenOrientation="portrait"
+                android:showWhenLocked="true"
+                android:turnScreenOn="true"
+                android:windowSoftInputMode="adjustResize">
+
+            <!-- Launcher entry point -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
+
+            <intent-filter>
+                <action android:name="android.intent.action.DIAL"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="tel"/>
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.DIAL"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <action android:name="android.intent.action.DIAL"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="tel"/>
+            </intent-filter>
+
         </activity>
+
+
+        <service
+                android:name=".service.CallingInCallService"
+                android:permission="android.permission.BIND_INCALL_SERVICE"
+                android:exported="true">
+            <meta-data
+                    android:name="android.telecom.IN_CALL_SERVICE_UI"
+                    android:value="true"/>
+            <intent-filter>
+                <action android:name="android.telecom.InCallService"/>
+            </intent-filter>
+        </service>
+
+
+        <receiver
+                android:name=".receiver.PhoneStateReceiver"
+                android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE"/>
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

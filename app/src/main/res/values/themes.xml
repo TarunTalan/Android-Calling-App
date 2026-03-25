@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.MyApplication" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.MyApplication" parent="android:Theme.Material.NoActionBar">
+        <!-- Use a dark window background for the splash/launch screen -->
+        <item name="android:windowBackground">@color/black</item>
+    </style>
 </resources>
