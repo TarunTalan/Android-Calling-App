@@ -8,7 +8,9 @@
     <uses-permission android:name="android.permission.READ_CALL_LOG"/>
     <uses-permission android:name="android.permission.CALL_PHONE"/>
     <uses-permission android:name="android.permission.READ_PHONE_NUMBERS"/>
-    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS"/>
+    <!-- MANAGE_OWN_CALLS is for self-managed calls only — removed because this
+         app uses InCallService (system-managed). Having both causes Telecom to
+         skip routing real SIM calls through our InCallService. -->
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS"/>
     <!-- Required to query device contacts for dial-pad suggestions -->
     <uses-permission android:name="android.permission.READ_CONTACTS"/>

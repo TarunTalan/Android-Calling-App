@@ -1,6 +1,10 @@
 package com.example.myapplication.navigation
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -11,9 +15,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.example.myapplication.ui.screen.ActiveCallScreen
 import com.example.myapplication.model.CallState
-import com.example.myapplication.ui.screen.DialPadScreen
+import com.example.myapplication.ui.screen.ActiveCallScreen
+import com.example.myapplication.ui.screen.DialpadScreen
 import com.example.myapplication.ui.screen.IncomingCallScreen
 import com.example.myapplication.ui.screen.OutgoingCallScreen
 import com.example.myapplication.viewmodel.CallViewModel
@@ -48,10 +52,33 @@ fun AppNavGraph(
 
             is CallState.Active -> {
                 val current = navController.currentDestination?.route
-                if (current != Screen.ActiveCall.route) {
-                    navController.navigate(Screen.ActiveCall.route) {
-                        launchSingleTop = true
-                        popUpTo(Screen.DialPad.route) { saveState = false }
+                // Only transition to ActiveCall from the outgoing or incoming screens.
+                // If we are somehow still on DialPad it means the state jumped
+                // directly from Idle → Active (race condition / fast device).
+                // In that case navigate via OutgoingCall so the stack is correct.
+                when (current) {
+                    Screen.OutgoingCall.route, Screen.IncomingCall.route -> {
+                        navController.navigate(Screen.ActiveCall.route) {
+                            launchSingleTop = true
+                            popUpTo(Screen.DialPad.route) { saveState = false }
+                        }
+                    }
+
+                    Screen.ActiveCall.route -> { /* already there */
+                    }
+
+                    else -> {
+                        // Landed on Active without going through Calling/Ringing —
+                        // push OutgoingCall briefly then Active so back-stack is sane
+                        navController.navigate(Screen.OutgoingCall.route) {
+                            launchSingleTop = true
+                            popUpTo(Screen.DialPad.route) { saveState = false }
+                        }
+                        delay(350)
+                        navController.navigate(Screen.ActiveCall.route) {
+                            launchSingleTop = true
+                            popUpTo(Screen.DialPad.route) { saveState = false }
+                        }
                     }
                 }
             }
@@ -75,13 +102,17 @@ fun AppNavGraph(
         composable(
             route = Screen.DialPad.route,
             enterTransition = {
-                fadeIn(tween(300)) + scaleIn(tween(300), initialScale = 0.95f)
+                if (initialState.destination.route == null) {
+                    EnterTransition.None
+                } else {
+                    fadeIn(tween(300, easing = LinearOutSlowInEasing)) + scaleIn(tween(300, easing = FastOutSlowInEasing), initialScale = 0.96f)
+                }
             },
             exitTransition = {
-                fadeOut(tween(300)) + scaleOut(tween(300), targetScale = 0.95f)
+                fadeOut(tween(250, easing = LinearEasing)) + scaleOut(tween(250, easing = FastOutLinearInEasing), targetScale = 0.96f)
             }
         ) {
-            DialPadScreen(viewModel = viewModel, context = context)
+            DialpadScreen(viewModel = viewModel)
         }
 
         composable(
@@ -89,14 +120,14 @@ fun AppNavGraph(
             enterTransition = {
                 slideIntoContainer(
                     AnimatedContentTransitionScope.SlideDirection.Up,
-                    tween(450)
-                ) + fadeIn(tween(450))
+                    tween(350, easing = FastOutSlowInEasing)
+                ) + fadeIn(tween(350, easing = LinearEasing))
             },
             exitTransition = {
                 slideOutOfContainer(
                     AnimatedContentTransitionScope.SlideDirection.Down,
-                    tween(350)
-                ) + fadeOut(tween(350))
+                    tween(300, easing = FastOutLinearInEasing)
+                ) + fadeOut(tween(300, easing = LinearEasing))
             }
         ) {
             OutgoingCallScreen(viewModel = viewModel)
@@ -107,14 +138,14 @@ fun AppNavGraph(
             enterTransition = {
                 slideIntoContainer(
                     AnimatedContentTransitionScope.SlideDirection.Up,
-                    tween(450)
-                ) + fadeIn(tween(450))
+                    tween(350, easing = FastOutSlowInEasing)
+                ) + fadeIn(tween(350, easing = LinearEasing))
             },
             exitTransition = {
                 slideOutOfContainer(
                     AnimatedContentTransitionScope.SlideDirection.Down,
-                    tween(350)
-                ) + fadeOut(tween(350))
+                    tween(300, easing = FastOutLinearInEasing)
+                ) + fadeOut(tween(300, easing = LinearEasing))
             }
         ) {
             IncomingCallScreen(viewModel = viewModel)
@@ -123,10 +154,10 @@ fun AppNavGraph(
         composable(
             route = Screen.ActiveCall.route,
             enterTransition = {
-                fadeIn(tween(400)) + scaleIn(tween(400), initialScale = 0.96f)
+                fadeIn(tween(350, easing = LinearOutSlowInEasing)) + scaleIn(tween(350, easing = FastOutSlowInEasing), initialScale = 0.98f)
             },
             exitTransition = {
-                fadeOut(tween(300)) + scaleOut(tween(300), targetScale = 0.96f)
+                fadeOut(tween(250, easing = LinearEasing)) + scaleOut(tween(250, easing = FastOutLinearInEasing), targetScale = 0.98f)
             }
         ) {
             ActiveCallScreen(viewModel = viewModel)

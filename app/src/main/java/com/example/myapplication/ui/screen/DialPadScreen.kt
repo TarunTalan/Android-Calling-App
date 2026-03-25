@@ -1,132 +1,183 @@
 package com.example.myapplication.ui.screen
 
-import android.Manifest
-import android.content.Context
-import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
-import androidx.compose.material.icons.automirrored.filled.PhoneCallback
 import androidx.compose.material.icons.filled.Call
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Dialpad
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.InterceptPlatformTextInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.myapplication.ui.components.CircleButton
 import com.example.myapplication.ui.components.DialKey
-import com.example.myapplication.ui.theme.CallGreen
-import com.example.myapplication.ui.theme.CallGreenDark
+import com.example.myapplication.ui.theme.*
+import com.example.myapplication.utils.formatPhoneDisplay
 import com.example.myapplication.viewmodel.CallViewModel
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.isGranted
-import com.google.accompanist.permissions.rememberPermissionState
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────────────────────────────────────
-
-private val DIAL_KEYS = listOf(
-    "1" to "",
-    "2" to "ABC",
-    "3" to "DEF",
-    "4" to "GHI",
-    "5" to "JKL",
-    "6" to "MNO",
-    "7" to "PQRS",
-    "8" to "TUV",
-    "9" to "WXYZ",
-    "*" to "",
-    "0" to "+",
-    "#" to ""
-)
-
-private const val MAX_DIAL_LENGTH = 15
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Data model
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * A contact entry used for dial-pad suggestions and incoming call resolution.
- *
- * [numberLabel] is the phone-type string from ContactsContract ("Mobile", "Work", …).
- * It defaults to empty so the existing hardcoded fallback list still compiles.
- */
+// ─── Data model ───────────────────────────────────────────────────────────────
 data class ContactSuggestion(
-    val name: String, val number: String, val numberLabel: String = "",
-    /** Avatar initials, e.g. "JD" for "John Doe". */
-    val initials: String = name.split(" ").filter { it.isNotEmpty() }.take(2)
-        .joinToString("") { it.first().uppercaseChar().toString() }
+    val name: String, val number: String, val numberLabel: String = ""
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Dial-pad key layout ──────────────────────────────────────────────────────
+private val DIAL_KEYS = listOf(
+    listOf("1" to "", "2" to "ABC", "3" to "DEF"),
+    listOf("4" to "GHI", "5" to "JKL", "6" to "MNO"),
+    listOf("7" to "PQRS", "8" to "TUV", "9" to "WXYZ"),
+    listOf("*" to "", "0" to "+", "#" to "")
+)
 
-private fun numberFontSize(length: Int): Int = when {
-    length >= 15 -> 20
-    length >= 13 -> 22
-    length >= 11 -> 26
-    length >= 9 -> 30
-    length >= 7 -> 34
-    length >= 5 -> 38
-    else -> 42
+private val FAB_SIZE = 60.dp
+private val FAB_MARGIN = 20.dp
+
+// ─── Allowed characters ───────────────────────────────────────────────────────
+private fun String.filterDialChars() = filter { it.isDigit() || it == '+' || it == '*' || it == '#' }.take(15)
+
+// ─── Cursor-aware insert ──────────────────────────────────────────────────────
+private fun insertAtCursor(tfv: TextFieldValue, str: String): TextFieldValue {
+    val text = tfv.text
+    val s = tfv.selection.start.coerceIn(0, text.length)
+    val e = tfv.selection.end.coerceIn(0, text.length)
+    val newText = (text.substring(0, s) + str + text.substring(e)).filterDialChars()
+    val newCursor = (s + str.length).coerceAtMost(newText.length)
+    return tfv.copy(text = newText, selection = TextRange(newCursor))
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Root screen
-// ─────────────────────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalPermissionsApi::class)
-@Composable
-fun DialPadScreen(
-    viewModel: CallViewModel, context: Context
-) {
-    val dialedNumber by viewModel.dialedNumber.collectAsStateWithLifecycle()
-    val haptic = LocalHapticFeedback.current
-    val callPermission = rememberPermissionState(Manifest.permission.CALL_PHONE)
-
-    // ── READ_CONTACTS permission ──────────────────────────────────────────────
-    val contactsPermission = rememberPermissionState(Manifest.permission.READ_CONTACTS)
-
-    // Load real device contacts once READ_CONTACTS is granted.
-    LaunchedEffect(contactsPermission.status.isGranted) {
-        if (contactsPermission.status.isGranted) {
-            viewModel.loadDeviceContacts(context)
-        }
+// ─── Cursor-aware delete ──────────────────────────────────────────────────────
+private fun deleteAtCursor(tfv: TextFieldValue): TextFieldValue {
+    val text = tfv.text
+    val s = tfv.selection.start.coerceIn(0, text.length)
+    val e = tfv.selection.end.coerceIn(0, text.length)
+    return if (s != e) {
+        val newText = text.substring(0, s) + text.substring(e)
+        tfv.copy(text = newText, selection = TextRange(s))
+    } else if (s > 0) {
+        val newText = text.substring(0, s - 1) + text.substring(s)
+        tfv.copy(text = newText, selection = TextRange(s - 1))
+    } else {
+        tfv
     }
+}
 
-    // ── TextFieldValue state ──────────────────────────────────────────────────
+// ─── Pre-allocated Layout Resources ───────────────────────────────────────────
+private val ScreenBackgroundBrush = Brush.verticalGradient(
+    colors = listOf(SurfaceDark, BackgroundDark, BackgroundDark)
+)
+private val PanelBackgroundBrush = Brush.verticalGradient(
+    colors = listOf(SurfaceElevated, SurfaceDark)
+)
+private val AvatarBrush = Brush.radialGradient(
+    listOf(Color(0xFF1C2E1C), Color(0xFF0D180D))
+)
+
+// ─── Number Spacing Formatter ─────────────────────────────────────────────────
+private class SimplePhoneVisualTransformation : VisualTransformation {
+    override fun filter(text: androidx.compose.ui.text.AnnotatedString): TransformedText {
+        val raw = text.text
+        var out = ""
+        val originalToTransformed = mutableListOf<Int>()
+        var offset = 0
+        
+        for (i in raw.indices) {
+            originalToTransformed.add(offset)
+            out += raw[i]
+            offset++
+            
+            // Add space for standard formats like +1 555 123 4567 or 123 456 7890
+            val shouldSpace = if (raw.startsWith("+")) {
+                i == 1 || i == 4 || i == 7
+            } else if (raw.length <= 10) {
+                i == 2 || i == 5
+            } else {
+                i == 4 || i == 9
+            }
+            
+            if (shouldSpace && i != raw.lastIndex) {
+                out += " "
+                offset++
+            }
+        }
+        originalToTransformed.add(offset)
+        
+        val offsetMapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int {
+                return if (offset < originalToTransformed.size) originalToTransformed[offset] else out.length
+            }
+            override fun transformedToOriginal(offset: Int): Int {
+                return originalToTransformed.indexOfLast { it <= offset }.coerceAtLeast(0)
+            }
+        }
+        return TransformedText(androidx.compose.ui.text.AnnotatedString(out), offsetMapping)
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  DialpadScreen
+//
+//  Layer stack (root = Box):
+//  0 ─ LazyColumn     (full-screen contacts list — always interactive)
+//  1 ─ Scrim          (transparent, full-screen; visible only when panel is open;
+//                      tapping it collapses the panel — no visual footprint)
+//  2 ─ DialpadPanel   (align=BottomCenter, slides in/out with AnimatedVisibility)
+//  3 ─ FAB            (align=BottomEnd, visible only when panel is collapsed)
+//
+//  Tap-outside behaviour: the scrim (Layer 1) covers everything above the panel.
+//  A tap anywhere outside the panel footprint hits the scrim first and sets
+//  panelExpanded = false, collapsing the panel back to the FAB.
+//  Scroll-to-top behaviour: scrolledDown derivedState fires → panelExpanded = false.
+//  Keyboard: InterceptPlatformTextInput wraps BasicTextField and swallows the
+//            IME session — keyboard never appears; cursor/paste work normally.
+// ═════════════════════════════════════════════════════════════════════════════
+@Composable
+fun DialpadScreen(viewModel: CallViewModel) {
+
+    val dialedNumber by viewModel.dialedNumber.collectAsStateWithLifecycle()
+    val contactSuggestions by viewModel.contactSuggestions.collectAsStateWithLifecycle()
+
     var textFieldValue by remember { mutableStateOf(TextFieldValue("")) }
 
-    // Sync ViewModel → local state only when text actually differs.
-    // This prevents the LaunchedEffect from snapping the cursor to end on
-    // selection-only changes (the cursor-revert bug).
     LaunchedEffect(dialedNumber) {
         if (dialedNumber != textFieldValue.text) {
             textFieldValue = TextFieldValue(
@@ -135,511 +186,498 @@ fun DialPadScreen(
         }
     }
 
-    val contactName = viewModel.resolveContactName(dialedNumber)
+    var panelExpanded by remember { mutableStateOf(true) }
 
-    val contactSuggestions: List<ContactSuggestion> = remember(dialedNumber) {
-        viewModel.searchContacts(dialedNumber)
-    }
+    // Intercept back press while the panel is open — collapse it instead of exiting
+    BackHandler(enabled = panelExpanded) { panelExpanded = false }
+    val listState = rememberLazyListState()
+    val density = LocalDensity.current
 
-    // Shared handler: notify ViewModel only when text changes, not cursor moves.
-    val onValueChange: (TextFieldValue) -> Unit = remember(viewModel) {
-        { updated ->
-            val prevText = textFieldValue.text
-            textFieldValue = updated
-            if (updated.text != prevText) {
-                viewModel.setNumber(updated.text)
-            }
+    val scrolledDown by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > with(density) { 32.dp.roundToPx() }
         }
     }
+    LaunchedEffect(scrolledDown) { if (scrolledDown) panelExpanded = false }
 
-    Surface(
-        modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background
+    Box(
+        modifier = Modifier.fillMaxSize().background(
+            Brush.verticalGradient(
+                colors = listOf(SurfaceDark, BackgroundDark, BackgroundDark)
+            )
+        )
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+
+        // ── Layer 0: Contact list — ALWAYS interactive ────────────────────────
+        LazyColumn(
+            state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(
+                start = 16.dp, end = 16.dp, top = 0.dp, bottom = 100.dp
+            ), verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // ── Header ────────────────────────────────────────────────────────
-            DialPadHeader(onSimulateIncoming = {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                viewModel.simulateIncomingCall()
-            })
-
-            // ── Contact suggestions (vertical Truecaller-style) ───────────────
-            // Slides in above the spacer so it pushes the dial-pad DOWN, keeping
-            // the keypad always visible.
-            AnimatedVisibility(
-                visible = contactSuggestions.isNotEmpty(),
-                enter = fadeIn(tween(180)) + expandVertically(tween(200)),
-                exit = fadeOut(tween(130)) + shrinkVertically(tween(160))
-            ) {
-                ContactSuggestionsList(
-                    suggestions = contactSuggestions, onSelect = { suggestion ->
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    textFieldValue = TextFieldValue(
-                        text = suggestion.number, selection = TextRange(suggestion.number.length)
-                    )
-                    viewModel.setNumber(suggestion.number)
-                },
-                    // Nudge to grant permission shown at bottom of list when not yet granted
-                    onRequestContactsPermission = if (!contactsPermission.status.isGranted) {
-                        { contactsPermission.launchPermissionRequest() }
-                    } else null)
+            item(key = "contacts_header") {
+                ContactsHeader(
+                    title = if (dialedNumber.isEmpty() && contactSuggestions.isNotEmpty()) "Recent Calls" else "Contacts",
+                    onSimulateIncoming = { viewModel.simulateIncomingCall() }
+                )
             }
 
-            // Push the number display + keypad to the bottom half of the screen
-            Spacer(modifier = Modifier.weight(1f))
+            items(contactSuggestions, key = { "${it.name}|${it.number}" }) { contact ->
+                ContactRow(
+                    contact = contact, onClick = {
+                        viewModel.setNumber(contact.number)
+                        viewModel.startOutgoingCall()
+                    })
+            }
+        }
 
-            // ── Number display ────────────────────────────────────────────────
-            NumberDisplayArea(
-                textFieldValue = textFieldValue, contactName = contactName, onTextFieldValueChange = onValueChange
-            )
+        // ── Layer 1: Transparent scrim — tap outside panel collapses it ──────
+        // Covers the full screen above the panel. Passes zero visual weight but
+        // consumes every tap so nothing behind it fires AND the panel collapses.
+        if (panelExpanded) {
+            Box(
+                modifier = Modifier.fillMaxSize().pointerInput(Unit) {
+                        detectTapGestures { panelExpanded = false }
+                    })
+        }
 
-            Spacer(modifier = Modifier.height(12.dp))
+        // ── Layer 2: Dialpad panel ────────────────────────────────────────────
+        // Slides in/out from the bottom edge.
+        // pointerInput on the panel's modifier swallows all events within the
+        // panel footprint — nothing outside (above the panel) is blocked.
+        AnimatedVisibility(
+            visible = panelExpanded,
+            enter = slideInVertically(
+                animationSpec = spring(dampingRatio = 0.78f, stiffness = 280f), initialOffsetY = { it }) + fadeIn(
+                tween(
+                    180
+                )
+            ),
+            exit = slideOutVertically(
+                animationSpec = tween(220), targetOffsetY = { it }) + fadeOut(tween(200)),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            DialpadPanel(modifier = Modifier.pointerInput(Unit) {
+                // Swallow every pointer event so contacts behind the panel
+                // are not accidentally triggered.
+                awaitPointerEventScope { while (true) awaitPointerEvent() }
+            }, textFieldValue = textFieldValue, onTextFieldValueChange = { newTfv ->
+                val filtered = newTfv.text.filterDialChars()
+                val finalTfv = if (filtered == newTfv.text) newTfv
+                else newTfv.copy(
+                    text = filtered, selection = TextRange(
+                        newTfv.selection.start.coerceAtMost(filtered.length),
+                        newTfv.selection.end.coerceAtMost(filtered.length)
+                    )
+                )
+                textFieldValue = finalTfv
+                viewModel.setNumber(finalTfv.text)
+            }, onKeyPress = { digit ->
+                val newTfv = insertAtCursor(textFieldValue, digit)
+                textFieldValue = newTfv
+                viewModel.setNumber(newTfv.text)
+            }, onZeroLongPress = {
+                val newTfv = insertAtCursor(textFieldValue, "+")
+                textFieldValue = newTfv
+                viewModel.setNumber(newTfv.text)
+            }, onDelete = {
+                val newTfv = deleteAtCursor(textFieldValue)
+                textFieldValue = newTfv
+                viewModel.setNumber(newTfv.text)
+            }, onDeleteLong = {
+                textFieldValue = TextFieldValue("")
+                viewModel.clearNumber()
+            }, onCall = { viewModel.startOutgoingCall() })
+        }
 
-            // ── Dial-pad grid ─────────────────────────────────────────────────
-            DialPadGrid(
-                textFieldValue = textFieldValue, onTextFieldValueChange = { updated ->
-                    val prevText = textFieldValue.text
-                    textFieldValue = updated
-                    if (updated.text != prevText) {
-                        viewModel.setNumber(updated.text)
-                    }
-                })
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // ── Bottom action row ─────────────────────────────────────────────
-            BottomActionRow(
-                dialedNumber = dialedNumber,
-                textFieldValue = textFieldValue,
-                callPermission = callPermission,
-                onCall = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    if (callPermission.status.isGranted) {
-                        try {
-                            val intent = Intent(Intent.ACTION_CALL, "tel:$dialedNumber".toUri())
-                            context.startActivity(intent)
-                        } catch (_: SecurityException) {
-                            callPermission.launchPermissionRequest()
-                        }
-                    } else {
-                        callPermission.launchPermissionRequest()
-                    }
-                    viewModel.startOutgoingCall()
-                },
-                onBackspace = { updated ->
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    textFieldValue = updated
-                    viewModel.setNumber(updated.text)
-                },
-                onClearAll = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    textFieldValue = TextFieldValue("")
-                    viewModel.clearNumber()
-                })
-
-            Spacer(modifier = Modifier.height(32.dp))
+        // ── Layer 3: FAB ──────────────────────────────────────────────────────
+        AnimatedVisibility(
+            visible = !panelExpanded,
+            enter = scaleIn(spring(dampingRatio = 0.6f, stiffness = 400f)) + fadeIn(tween(180)),
+            exit = scaleOut(tween(160)) + fadeOut(tween(160)),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = FAB_MARGIN, bottom = FAB_MARGIN)
+        ) {
+            DialpadFab(onClick = { panelExpanded = true })
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Header
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ═════════════════════════════════════════════════════════════════════════════
+//  Contacts header — Simulate Incoming button pinned to top-right
+// ═════════════════════════════════════════════════════════════════════════════
 @Composable
-private fun DialPadHeader(onSimulateIncoming: () -> Unit) {
+private fun ContactsHeader(title: String = "Contacts", onSimulateIncoming: () -> Unit = {}) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        modifier = Modifier.fillMaxWidth().padding(top = 52.dp, bottom = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
-            text = "Keypad", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground
+            text = title,
+            color = TextPrimary,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.3.sp,
         )
-        OutlinedButton(
-            onClick = onSimulateIncoming,
-            shape = RoundedCornerShape(50),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = CallGreen),
-            border = BorderStroke(1.dp, CallGreen.copy(alpha = 0.5f)),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+
+        SimulateIncomingButton(onClick = onSimulateIncoming)
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Dialpad FAB
+// ═════════════════════════════════════════════════════════════════════════════
+@Composable
+private fun DialpadFab(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier.size(FAB_SIZE).shadow(
+            elevation = 10.dp,
+            shape = CircleShape,
+            ambientColor = CallGreen.copy(alpha = 0.35f),
+            spotColor = CallGreen.copy(alpha = 0.5f)
+        ).clip(CircleShape).background(CallGreen).clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = ripple(bounded = true, color = Color.White.copy(alpha = 0.3f)),
+            onClick = onClick
+        ), contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Dialpad,
+            contentDescription = "Open keypad",
+            tint = Color.White,
+            modifier = Modifier.size(26.dp)
+        )
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  DialpadPanel
+// ═════════════════════════════════════════════════════════════════════════════
+@Composable
+private fun DialpadPanel(
+    modifier: Modifier,
+    textFieldValue: TextFieldValue,
+    onTextFieldValueChange: (TextFieldValue) -> Unit,
+    onKeyPress: (String) -> Unit,
+    onZeroLongPress: () -> Unit,
+    onDelete: () -> Unit,
+    onDeleteLong: () -> Unit,
+    onCall: () -> Unit,
+) {
+    val dialedNumber = textFieldValue.text
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .wrapContentHeight()
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
+            .background(PanelBackgroundBrush), 
+        contentAlignment = Alignment.TopCenter
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.fillMaxWidth(), thickness = 0.5.dp, color = Color.White.copy(alpha = 0.10f)
+        )
+
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.PhoneCallback,
-                contentDescription = "Simulate incoming call",
-                modifier = Modifier.size(14.dp)
+            NumberRow(
+                textFieldValue = textFieldValue,
+                onValueChange = onTextFieldValueChange,
+                onDelete = onDelete,
+                onDeleteLong = onDeleteLong,
             )
-            Spacer(modifier = Modifier.width(5.dp))
-            Text(text = "Incoming", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                DIAL_KEYS.forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        row.forEach { (digit, sub) ->
+                            DialKey(
+                                digit = digit,
+                                subText = sub,
+                                onPress = onKeyPress,
+                                onLongPress = if (digit == "0") ({ onZeroLongPress() }) else null,
+                                size = 68.dp
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            CircleButton(
+                onClick = onCall,
+                backgroundColor = if (dialedNumber.isNotEmpty()) CallGreen
+                else CallGreen.copy(alpha = 0.32f),
+                pressedColor = Color(0xFF1A7A1A),
+                size = 68.dp,
+                icon = Icons.Filled.Call,
+                iconTint = Color.White,
+                label = "Call",
+                enabled = dialedNumber.isNotEmpty()
+            )
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Contact suggestions list  —  Truecaller / AOSP dialer style
-//
-// Vertical LazyColumn, max 4 rows visible before scrolling.
-// Each row:  [Avatar]  [Name (bold) / Number · Type label]  [Quick-call button]
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ═════════════════════════════════════════════════════════════════════════════
+//  Simulate-incoming mini button (top-right of contacts header)
+// ═════════════════════════════════════════════════════════════════════════════
 @Composable
-private fun ContactSuggestionsList(
-    suggestions: List<ContactSuggestion>,
-    onSelect: (ContactSuggestion) -> Unit,
-    onRequestContactsPermission: (() -> Unit)?
-) {
-    val itemHeightDp = 64.dp
-    val maxVisible = 4
-    val listHeight = itemHeightDp * minOf(suggestions.size, maxVisible)
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-
-        HorizontalDivider(
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f), thickness = 0.5.dp
-        )
-
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().height(listHeight)
+private fun SimulateIncomingButton(onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(40.dp).clip(CircleShape).background(SurfaceVariantDark).clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(bounded = true, color = Color(0xFFFFB300).copy(alpha = 0.3f)),
+                onClick = onClick
+            ), contentAlignment = Alignment.Center
         ) {
-            items(suggestions, key = { "${it.name}|${it.number}" }) { suggestion ->
-                ContactSuggestionRow(
-                    suggestion = suggestion, onClick = { onSelect(suggestion) })
-            }
+            Icon(
+                imageVector = Icons.Filled.Call,
+                contentDescription = "Simulate incoming call",
+                tint = Color(0xFFFFB300),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Text(
+            text = "Incoming",
+            color = TextSecondary,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Normal,
+            letterSpacing = 0.2.sp,
+        )
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Number display row
+//
+//  HOW THE KEYBOARD IS PERMANENTLY BLOCKED — TrueCaller / dialer approach
+//  ────────────────────────────────────────────────────────────────────────────
+//  We use BasicTextField (so cursor, selection handles, and the system
+//  copy/cut/paste toolbar all work natively) wrapped inside:
+//
+//      InterceptPlatformTextInput { request, nextHandler ->
+//          awaitCancellation()   // ← never calls nextHandler
+//      }
+//
+//  InterceptPlatformTextInput sits at the Compose platform-text-input layer.
+//  When BasicTextField gains focus it fires a startInputMethod() call upward
+//  through this interceptor. Because we never forward to nextHandler, the IME
+//  session is never established — the soft keyboard is never shown, on ANY
+//  Android/Compose version, with NO race condition.
+//
+//  Cursor blinking, drag-to-select, long-press selection, and the
+//  Copy/Cut/Paste/Select-All action toolbar are all driven by Compose's own
+//  TextSelectionBackend, which is completely independent of the IME pipeline —
+//  they remain fully functional exactly as in TrueCaller's dialer.
+//
+//  Paste from the toolbar calls onValueChange with the pasted text, which is
+//  then filtered through filterDialChars() — only digits/+/*/#  accepted.
+// ═════════════════════════════════════════════════════════════════════════════
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@Composable
+private fun NumberRow(
+    textFieldValue: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    onDelete: () -> Unit,
+    onDeleteLong: () -> Unit,
+) {
+    val number = textFieldValue.text
+
+    val deleteAlpha by animateFloatAsState(
+        targetValue = if (number.isNotEmpty()) 1f else 0f, animationSpec = tween(200), label = "deleteAlpha"
+    )
+    val fontSize = when {
+        number.length > 12 -> 22.sp
+        number.length > 8 -> 28.sp
+        else -> 34.sp
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically
+    ) {
+        Spacer(modifier = Modifier.size(48.dp))
+
+        // ── Swallow IME at the platform layer — keyboard never appears ─────────
+        InterceptPlatformTextInput(
+            interceptor = { _, _ ->
+                // Intentionally do NOT call nextHandler.startInputMethod().
+                // This prevents the IME session from ever being established.
+                // awaitCancellation() keeps the coroutine alive so Compose
+                // doesn't retry the request on recomposition.
+                kotlinx.coroutines.awaitCancellation()
+            }) {
+            BasicTextField(
+                value = textFieldValue, onValueChange = { newTfv ->
+                    // Filter pasted content to dial-safe chars only
+                    val filtered = newTfv.text.filterDialChars()
+                    if (filtered == newTfv.text) onValueChange(newTfv)
+                    else onValueChange(
+                        newTfv.copy(
+                            text = filtered, selection = TextRange(
+                                newTfv.selection.start.coerceAtMost(filtered.length),
+                                newTfv.selection.end.coerceAtMost(filtered.length)
+                            )
+                        )
+                    )
+                }, singleLine = true, cursorBrush = SolidColor(CallGreen), textStyle = TextStyle(
+                    textAlign = TextAlign.Center,
+                    fontSize = fontSize,
+                    fontWeight = FontWeight.Light,
+                    color = TextPrimary,
+                    letterSpacing = 2.sp,
+                ), modifier = Modifier.weight(1f), 
+                visualTransformation = SimplePhoneVisualTransformation(),
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center
+                    ) {
+                        if (number.isEmpty()) {
+                            Text(
+                                text = "",
+                                color = TextSecondary.copy(alpha = 0.35f),
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Light,
+                                textAlign = TextAlign.Center,
+                                letterSpacing = 8.sp,
+                            )
+                        }
+                        innerTextField()
+                    }
+                })
         }
 
-        // Permission nudge — only shown when contacts haven't been granted yet
-        if (onRequestContactsPermission != null) {
-            TextButton(
-                onClick = onRequestContactsPermission, modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+        // Delete — tap: delete char, long-press: clear all
+        Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier.size(36.dp).alpha(deleteAlpha).clip(CircleShape).combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = ripple(bounded = true, color = Color.White.copy(alpha = 0.2f)),
+                        enabled = number.isNotEmpty(),
+                        onClick = onDelete,
+                        onLongClick = onDeleteLong,
+                    ), contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "Allow contacts access for more suggestions",
-                    fontSize = 11.sp,
-                    color = CallGreen.copy(alpha = 0.75f),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Backspace,
+                    contentDescription = "Delete",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
-
-        HorizontalDivider(
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f), thickness = 0.5.dp
-        )
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Single suggestion row
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ═════════════════════════════════════════════════════════════════════════════
+//  Contact suggestion row
+// ═════════════════════════════════════════════════════════════════════════════
 @Composable
-private fun ContactSuggestionRow(
-    suggestion: ContactSuggestion, onClick: () -> Unit
+private fun ContactRow(
+    contact: ContactSuggestion,
+    onClick: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(64.dp).clickable(
-            interactionSource = remember { MutableInteractionSource() }, indication = ripple(bounded = true)
-        ) { onClick() }.padding(horizontal = 4.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(CardBackground).clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = ripple(bounded = true, color = Color.White.copy(alpha = 0.15f)),
+            onClick = onClick
+        ).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        // ── Avatar circle with initials ───────────────────────────────────────
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
         Box(
-            modifier = Modifier.size(44.dp).clip(CircleShape).background(avatarColor(suggestion.name)),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center, 
+            modifier = Modifier.size(42.dp).clip(CircleShape).background(AvatarBrush)
         ) {
             Text(
-                text = suggestion.initials, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White
+                text = contact.name.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                color = CallGreen,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
             )
         }
 
-        // ── Name + number / label ─────────────────────────────────────────────
-        Column(
-            modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = suggestion.name,
+                text = contact.name,
+                color = TextPrimary,
                 fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onBackground,
+                fontWeight = FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = formatDisplayNumber(suggestion.number),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (suggestion.numberLabel.isNotEmpty()) {
-                    Text(
-                        text = "·", fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f)
-                    )
-                    // e.g. "Mobile", "Work", "Home"
-                    Text(
-                        text = suggestion.numberLabel,
-                        fontSize = 11.sp,
-                        color = CallGreen.copy(alpha = 0.8f),
-                        maxLines = 1
-                    )
-                }
-            }
-        }
-
-        // ── Quick-call circle button ──────────────────────────────────────────
-        Box(
-            modifier = Modifier.size(36.dp).clip(CircleShape).background(CallGreen.copy(alpha = 0.12f)).clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = ripple(bounded = true, color = CallGreen.copy(alpha = 0.3f))
-                ) { onClick() }, contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Call,
-                contentDescription = "Call ${suggestion.name}",
-                tint = CallGreen,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-    }
-}
-
-/**
- * Deterministic avatar color derived from the contact's name hash so the
- * same contact always shows the same color across sessions.
- */
-private fun avatarColor(name: String): Color {
-    val palette = listOf(
-        Color(0xFF5C6BC0), // indigo
-        Color(0xFF26A69A), // teal
-        Color(0xFFEF5350), // red
-        Color(0xFFAB47BC), // purple
-        Color(0xFF42A5F5), // blue
-        Color(0xFFFF7043), // deep orange
-        Color(0xFF66BB6A), // green
-        Color(0xFFEC407A), // pink
-        Color(0xFF8D6E63), // brown
-        Color(0xFF78909C), // blue-grey
-    )
-    return palette[Math.abs(name.hashCode()) % palette.size]
-}
-
-/**
- * Simple visual formatter: "9876543210" → "98765 43210".
- * No country-code parsing — goal is readability, not E.164 compliance.
- */
-private fun formatDisplayNumber(number: String): String {
-    val digits = number.filter { it.isDigit() }
-    return when {
-        digits.length == 10 -> "${digits.substring(0, 5)} ${digits.substring(5)}"
-        digits.length > 10 -> "+${digits.takeLast(12).chunked(3).joinToString(" ")}"
-        else -> number
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Number display — BasicTextField gives native selection / copy / paste
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun NumberDisplayArea(
-    textFieldValue: TextFieldValue, contactName: String, onTextFieldValueChange: (TextFieldValue) -> Unit
-) {
-    val fontSize = numberFontSize(textFieldValue.text.length)
-    val onBackground = MaterialTheme.colorScheme.onBackground
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
-    ) {
-        BasicTextField(
-            value = textFieldValue,
-            onValueChange = onTextFieldValueChange,
-            singleLine = true,
-            textStyle = TextStyle(
-                fontSize = fontSize.sp, fontWeight = FontWeight.Thin, color = onBackground, textAlign = TextAlign.Center
-            ),
-            cursorBrush = SolidColor(CallGreen),
-            modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp)
-                .padding(vertical = 8.dp, horizontal = 4.dp)
-        )
-
-        // Resolved contact name shown below the number
-        AnimatedVisibility(
-            visible = contactName.isNotEmpty(), enter = fadeIn(tween(180)), exit = fadeOut(tween(120))
-        ) {
             Text(
-                text = contactName,
-                fontSize = 15.sp,
-                color = CallGreen,
-                fontWeight = FontWeight.Normal,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                text = formatPhoneDisplay(contact.number),
+                color = TextSecondary,
+                fontSize = 12.sp,
+                letterSpacing = 0.5.sp
             )
         }
-    }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Dial-pad grid
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun DialPadGrid(
-    textFieldValue: TextFieldValue, onTextFieldValueChange: (TextFieldValue) -> Unit
-) {
-    DIAL_KEYS.chunked(3).forEach { row ->
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            row.forEach { (digit, sub) ->
-                DialKey(digit = digit, subText = sub, size = 76.dp, onPress = { d ->
-                    val cur = textFieldValue
-                    val s = cur.selection.start
-                    val e = cur.selection.end
-                    if (cur.text.length < MAX_DIAL_LENGTH) {
-                        val newText = cur.text.substring(0, s) + d + cur.text.substring(e)
-                        onTextFieldValueChange(
-                            TextFieldValue(text = newText, selection = TextRange(s + d.length))
-                        )
-                    }
-                }, onLongPress = if (digit == "0") { _ ->
-                    val cur = textFieldValue
-                    val s = cur.selection.start
-                    val e = cur.selection.end
-                    if (cur.text.length < MAX_DIAL_LENGTH) {
-                        val newText = cur.text.substring(0, s) + "+" + cur.text.substring(e)
-                        onTextFieldValueChange(
-                            TextFieldValue(text = newText, selection = TextRange(s + 1))
-                        )
-                    }
-                } else null)
-            }
+        if (contact.numberLabel.isNotEmpty()) {
+            Text(
+                text = contact.numberLabel,
+                color = TextTertiary,
+                fontSize = 11.sp,
+                modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(SurfaceElevated)
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            )
         }
-        Spacer(modifier = Modifier.height(10.dp))
+
+        Icon(
+            imageVector = Icons.Filled.Call,
+            contentDescription = "Call",
+            tint = CallGreen.copy(alpha = 0.7f),
+            modifier = Modifier.size(18.dp)
+        )
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Bottom action row
-// ─────────────────────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalFoundationApi::class, ExperimentalPermissionsApi::class)
+// ─── Preview ──────────────────────────────────────────────────────────────────
+@Preview(showBackground = true)
 @Composable
-private fun BottomActionRow(
-    dialedNumber: String,
-    textFieldValue: TextFieldValue,
-    callPermission: com.google.accompanist.permissions.PermissionState,
-    onCall: () -> Unit,
-    onBackspace: (TextFieldValue) -> Unit,
-    onClearAll: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
+fun DialpadScreenPreview() {
+    Box(
+        modifier = Modifier.fillMaxSize().background(
+            Brush.verticalGradient(
+                colors = listOf(SurfaceDark, BackgroundDark, BackgroundDark)
+            )
+        )
     ) {
-        Box(modifier = Modifier.size(76.dp)) // phantom spacer
-
-        // ── Call button ───────────────────────────────────────────────────────
-        Box(
-            contentAlignment = Alignment.Center, modifier = Modifier.size(76.dp).clip(CircleShape).background(
-                    if (dialedNumber.isNotEmpty()) Brush.radialGradient(listOf(CallGreen, CallGreenDark))
-                    else Brush.radialGradient(
-                        listOf(CallGreen.copy(alpha = 0.4f), CallGreenDark.copy(alpha = 0.4f))
-                    )
-                ).combinedClickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = ripple(bounded = true, color = Color.White.copy(alpha = 0.3f)),
-                    enabled = dialedNumber.isNotEmpty(),
-                    onClick = onCall
-                )
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)
         ) {
-            Icon(
-                imageVector = Icons.Filled.Call,
-                contentDescription = "Call",
-                tint = Color.White,
-                modifier = Modifier.size(30.dp)
-            )
+            ContactsHeader(onSimulateIncoming = {})
+            Spacer(modifier = Modifier.height(8.dp))
+            ContactRow(contact = ContactSuggestion("Alice", "+1 234 567 890"), onClick = {})
+            Spacer(modifier = Modifier.height(6.dp))
+            ContactRow(contact = ContactSuggestion("Bob", "+44 7700 900123", "Work"), onClick = {})
         }
 
-        // ── Backspace button ──────────────────────────────────────────────────
-        Box(modifier = Modifier.size(76.dp), contentAlignment = Alignment.Center) {
-            androidx.compose.animation.AnimatedVisibility(
-                visible = dialedNumber.isNotEmpty(),
-                enter = fadeIn(tween(150)) + scaleIn(initialScale = 0.8f),
-                exit = fadeOut(tween(100)) + scaleOut(targetScale = 0.8f)
-            ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.size(76.dp).clip(CircleShape).combinedClickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = ripple(bounded = true, color = Color.White.copy(alpha = 0.15f)),
-                            onClick = {
-                                val cur = textFieldValue
-                                val s = cur.selection.start
-                                val e = cur.selection.end
-                                val newText: String
-                                val newCursor: Int
-                                if (s != e) {
-                                    newText = cur.text.removeRange(s, e)
-                                    newCursor = s
-                                } else if (s > 0) {
-                                    newText = cur.text.removeRange(s - 1, s)
-                                    newCursor = s - 1
-                                } else return@combinedClickable
-                                onBackspace(
-                                    TextFieldValue(text = newText, selection = TextRange(newCursor))
-                                )
-                            },
-                            onLongClick = onClearAll
-                        )
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Backspace,
-                        contentDescription = "Delete",
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Previews
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Preview(showBackground = true, backgroundColor = 0xFF121212)
-@Composable
-private fun ContactSuggestionRowPreview() {
-    MaterialTheme {
-        ContactSuggestionRow(
-            suggestion = ContactSuggestion(
-                name = "Rohan Sharma", number = "9876543210", numberLabel = "Mobile"
-            ), onClick = {})
-    }
-}
-
-@Preview(showBackground = true, backgroundColor = 0xFF121212)
-@Composable
-private fun ContactSuggestionsListPreview() {
-    MaterialTheme {
-        ContactSuggestionsList(
-            suggestions = listOf(
-                ContactSuggestion("Rohan Sharma", "9876543210", "Mobile"),
-                ContactSuggestion("Rahul Gupta", "9123456789", "Work"),
-                ContactSuggestion("Ravi Kumar", "9000000001", "Home"),
-            ), onSelect = {}, onRequestContactsPermission = null
+        DialpadPanel(
+            modifier = Modifier.align(Alignment.BottomCenter),
+            textFieldValue = TextFieldValue("12345"),
+            onTextFieldValueChange = {},
+            onKeyPress = {},
+            onZeroLongPress = {},
+            onDelete = {},
+            onDeleteLong = {},
+            onCall = {},
         )
     }
 }

@@ -134,7 +134,11 @@ fun ActiveCallScreen(viewModel: CallViewModel) {
                     text = callerName,
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Medium,
-                    color = TextPrimary
+                    color = TextPrimary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 32.dp)
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(

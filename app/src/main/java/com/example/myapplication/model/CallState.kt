@@ -11,7 +11,10 @@ sealed class CallState {
     object Idle : CallState()
 
     /** Outgoing call initiated, waiting for remote to answer */
-    data class Calling(val number: String) : CallState()
+    data class Calling(
+        val number: String,
+        val callerName: String = ""
+    ) : CallState()
 
     /** Incoming call received, waiting for local user to respond */
     data class Ringing(
