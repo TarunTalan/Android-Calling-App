@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -232,7 +234,7 @@ fun ActiveCallScreen(viewModel: CallViewModel) {
                         onClick = { viewModel.toggleSpeaker() },
                         backgroundColor = speakerColor,
                         size = 64.dp,
-                        icon = if (isSpeakerOn) Icons.Filled.VolumeUp else Icons.Filled.VolumeOff,
+                        icon = if (isSpeakerOn) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
                         iconTint = if (isSpeakerOn) CallGreen else TextSecondary,
                         label = if (isSpeakerOn) "Speaker" else "Speaker"
                     )

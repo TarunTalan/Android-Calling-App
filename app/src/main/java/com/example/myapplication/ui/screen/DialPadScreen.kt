@@ -153,23 +153,7 @@ private class SimplePhoneVisualTransformation : VisualTransformation {
     }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-//  DialpadScreen
-//
-//  Layer stack (root = Box):
-//  0 ─ LazyColumn     (full-screen contacts list — always interactive)
-//  1 ─ Scrim          (transparent, full-screen; visible only when panel is open;
-//                      tapping it collapses the panel — no visual footprint)
-//  2 ─ DialpadPanel   (align=BottomCenter, slides in/out with AnimatedVisibility)
-//  3 ─ FAB            (align=BottomEnd, visible only when panel is collapsed)
-//
-//  Tap-outside behaviour: the scrim (Layer 1) covers everything above the panel.
-//  A tap anywhere outside the panel footprint hits the scrim first and sets
-//  panelExpanded = false, collapsing the panel back to the FAB.
-//  Scroll-to-top behaviour: scrolledDown derivedState fires → panelExpanded = false.
-//  Keyboard: InterceptPlatformTextInput wraps BasicTextField and swallows the
-//            IME session — keyboard never appears; cursor/paste work normally.
-// ═════════════════════════════════════════════════════════════════════════════
+// Main Dialpad UI containing layers: Contacts List, Scrim, Panel, and Action FAB.
 @Composable
 fun DialpadScreen(viewModel: CallViewModel) {
 
